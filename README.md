@@ -6,5 +6,12 @@ Visionaire Studio Codesign python Tool
 * Use setuptools: `easy_install biplist`
 
 ## Usage
-`vsresign.py --list `
- 
+edit your config.ini file
+
+show certificates:
+`vsresign.py --list`
+
+resign iOS application:
+`vsresign.py -c config.ini -i visplayer.ipa`
+resign MacOS application:
+`vsresign.py -c yourconfig.ini visplayer.zip`

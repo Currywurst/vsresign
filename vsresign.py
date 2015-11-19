@@ -22,7 +22,8 @@ from ConfigParser import SafeConfigParser
 
 sys.path.append("lib")
 
-tmpdir = "tmp"
+tmpdir = "tmp"                           # temp directory for extraction / repack
+executable_file = "Visionaire Player"    # pre-defined executable to find
 
 
 def which(application):
@@ -44,6 +45,13 @@ def get_platform(platform):
     else:
         result = None
     return result
+
+
+def rename(executable_in, executable_out):
+    executable_out = os.path.dirname(os.path.relpath(executable_in)) + '/' + executable_out
+    print "~ rename : ", executable_in, ' -> ', executable_out
+    os.rename(executable_in, executable_out)
+    return executable_out
 
 
 def unzip(application, directory):
@@ -70,10 +78,12 @@ def cleanupdirectory(directory):
 
 
 def stringreplace(string):
+    #if isinstance(string, unicode):
+    #    string = string.encode("utf-8")
     if '{YEAR}' in string:
         string = string.replace('{YEAR}', datetime.date.today().strftime("%Y"))
-    if isinstance(string, unicode):
-        string = string.encode("utf-8")
+    if '{COPYRIGHT SIGN}' in string:
+        string = string.replace('{COPYRIGHT SIGN}', u'\N{COPYRIGHT SIGN}'.encode('utf-8'))
     try:
         string = ast.literal_eval(string)
     except Exception:
@@ -161,18 +171,27 @@ application_path = find("*.app", tmpdir)
 
 parser = SafeConfigParser()
 parser.optionxform=str
-parser.readfp(codecs.open(config_file, "r", "utf-8"))
-plist = biplist.readPlist(find('Info.plist', tmpdir))
+parser.read(config_file)
+plist_file = find('Info.plist', application_path)
+executable_file = find(executable_file, application_path)
+
+plist = biplist.readPlist(plist_file)
+
 for section_name in parser.sections():
     print '~~ Section:', section_name
     certificate = parser.get(section_name, 'certificate')
     plist_overwrite = parser.getboolean(section_name, 'info_plist_overwrite')
     entitlement_overwrite = parser.getboolean(section_name, 'entitlement_overwrite')
     generate_pkg = parser.getboolean(section_name, 'generate_macappstore_pkg')
+    if parser.has_option(section_name, 'CFBundleExecutable'):
+        executable_name = parser.get(section_name, 'CFBundleExecutable')
+        print '~~~~ set: CFBundleExecutable ->', executable_name
+    if parser.has_option(section_name, 'CFBundleName'):
+        application_name = parser.get(section_name, 'CFBundleName')
+        print '~~~~ set: CFBundleName ->', application_name
 
     if not certificate:
-        print ('Error: No certificate')
-        exit(1)
+        sys.exit('Error: No certificate')
 
     #plist
     if plist_overwrite:
@@ -189,6 +208,11 @@ for section_name in parser.sections():
                     else:
                         plist[line] = value
                         print '~~~~ set:', line, '->', value
+                    if 'CFBundleExecutable' in line:
+                        executable_name = value
+                    if 'CFBundleName' in line:
+                        application_name = value
+        biplist.writePlist(plist, plist_file)
     else:
         print '~~~ Skip generate plist:', section_name
 
@@ -211,13 +235,14 @@ for section_name in parser.sections():
     shutil.rmtree(find('_CodeSignature', tmpdir))
     # platform iOS
     if platform is "iOS":
-        mobile_provisioning_profile= parser.get(section_name, 'ios_embedded.mobileprovision')
+        rename(executable_file, executable_name)
+        application_path = rename(application_path, application_name + '.app')
+        mobile_provisioning_profile = parser.get(section_name, 'ios_embedded.mobileprovision')
         if mobile_provisioning_profile:
             os.remove(find('embedded.mobileprovision', tmpdir))
             shutil.copyfile(mobile_provisioning_profile, application_path+'/embedded.mobileprovision')
         else:
-            print("Error: need ios_embedded.mobileprovision profile")
-            exit(1)
+            sys.exit("Error: need ios_embedded.mobileprovision profile")
         cmd = ["codesign", "--sign", certificate, "--force", '--verbose']
         if entitlement_overwrite:
             cmd = cmd + ["--entitlements="+find("entitlement.plist", tmpdir)]
@@ -226,6 +251,7 @@ for section_name in parser.sections():
         zip('tmp', "./" + section_name, '.ipa')
     # platform MacOS
     if platform is "MacOS":
+        sys.exit("coming soon…")
         cmd = ["codesign", "--deep", "--sign", certificate, "--force", '--verbose']
         if entitlement_overwrite:
             cmd = cmd + ["--entitlements="+find("entitlement.plist", tmpdir)]
@@ -234,13 +260,8 @@ for section_name in parser.sections():
         zip('tmp', "./" + section_name, '.zip')
 
 
-
-
-#plistlib.writePlist(plist, "test.xml")
-biplist.writePlist(plist, "example.plist")
-
-pprint.pprint(plist)
-
+print("~ Cleanup tmp directory")
+cleanupdirectory(tmpdir)
 
 
 
