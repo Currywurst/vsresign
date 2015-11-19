@@ -6,5 +6,5 @@ Visionaire Studio Codesign python Tool
 * Use setuptools: `easy_install biplist`
 
 ## Usage
-`vsresign.py config.ini MyGame.ipa`
+`vsresign.py --list `
  

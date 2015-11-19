@@ -15,13 +15,15 @@ import subprocess
 import zipfile
 import shutil
 import datetime
-from ConfigParser import SafeConfigParser
-
+import codecs
 import pprint
+import ast
+from ConfigParser import SafeConfigParser
 
 sys.path.append("lib")
 
 tmpdir = "tmp"
+
 
 def which(application):
     def is_exe(fpath):
@@ -68,9 +70,14 @@ def cleanupdirectory(directory):
 
 
 def stringreplace(string):
-    result = ''
     if '{YEAR}' in string:
         string = string.replace('{YEAR}', datetime.date.today().strftime("%Y"))
+    if isinstance(string, unicode):
+        string = string.encode("utf-8")
+    try:
+        string = ast.literal_eval(string)
+    except Exception:
+        string = ast.literal_eval('"%s"' % string)
     return string
 
 
@@ -100,54 +107,61 @@ if not which("/usr/bin/zip"):
 if not which("/usr/bin/sips"):
     print("Error: sips not found. Cannot run without the sips utility present at /usr/bin/sips")
 
+
 parser = argparse.ArgumentParser(description='Visionaire-Studio resign tool')
 
 parser.add_argument('-l', '--list',
-                    action="store_true",
-                    help="list available signing certificates")
+                    help="list available signing certificates",
+                    action='store_true')
 
-parser.add_argument('config_file',
-                    #dest='config_filename',
-                    #required=True,
-                    #metavar="CONFIG_FILE",
+parser.add_argument('-c',
+                    default=False,
+                    dest="config_file",
+                    metavar="FILE",
                     help="specify config file")
 
-parser.add_argument('target',
-                    action="store",
-                    help="Codesign target")
+parser.add_argument('-i',
+                    default=False,
+                    dest="input_file",
+                    metavar="FILE",
+                    help="specify target input file")
 
 args = parser.parse_args()
+if args.config_file is False or args.input_file is False:
+    if args.list:
+        print("~ List: {}".format(args.list))
+        sys.exit(subprocess.call(["security", "find-identity", "-p", "codesigning", '-v']))
+    sys.exit(parser.print_help())
 
-print("~ List: {}".format(args.list))
-if args.list:
-    subprocess.call(["security", "find-identity", "-p", "codesigning", '-v'])
-    exit()
 
-platform = get_platform(args.target)
+platform = get_platform(args.input_file)
 if platform is None:
-    print('Error: unsupported player file')
-    exit(1)
+    sys.exit('Error: unsupported player file')
 
-target = args.target
+input_file = args.input_file
 config_file = args.config_file
 
 
-print("~ Target : {}".format(target))
-print("~ Target Platform : {}".format(platform))
-print("~ Target Config: {}".format(config_file))
+print("~ INPUT : {}".format(input_file))
+print("~ INPUT Platform : {}".format(input_file))
+print("~ INPUT Config: {}".format(config_file))
 
+if not os.path.isfile(input_file):
+    sys.exit('INPUT file does not exist: {}'.format(input_file))
+if not os.path.isfile(config_file):
+    sys.exit('CONFIG file does not exist: {}'.format(config_file))
 
 print("~ Cleanup tmp directory")
 cleanupdirectory(tmpdir)
 
 
-unzip(target, tmpdir)
+unzip(input_file, tmpdir)
 application_path = find("*.app", tmpdir)
 
 
 parser = SafeConfigParser()
 parser.optionxform=str
-parser.read(config_file)
+parser.readfp(codecs.open(config_file, "r", "utf-8"))
 plist = biplist.readPlist(find('Info.plist', tmpdir))
 for section_name in parser.sections():
     print '~~ Section:', section_name
@@ -222,9 +236,10 @@ for section_name in parser.sections():
 
 
 
+#plistlib.writePlist(plist, "test.xml")
+biplist.writePlist(plist, "example.plist")
 
-#plistlib.writePlist(pl, "test.xml")
-#pprint.pprint(plist)
+pprint.pprint(plist)
 
 
 
